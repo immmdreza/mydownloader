@@ -1,0 +1,38 @@
+name: Bale Downloader
+
+on:
+  workflow_dispatch:
+    inputs:
+      file_url:
+        required: true
+        type: string
+      chat_id:
+        required: true
+        type: string
+
+jobs:
+  download-and-upload:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download file
+        run: |
+          mkdir downloads
+          cd downloads
+          curl -L -O "${{ github.event.inputs.file_url }}"
+
+      - name: Find filename
+        id: file
+        run: |
+          FILE=$(ls downloads | head -n 1)
+          echo "name=$FILE" >> $GITHUB_OUTPUT
+
+      - name: Upload to Bale
+        env:
+          BALE_TOKEN: ${{ secrets.BALE_BOT_TOKEN }}
+          CHAT_ID: ${{ github.event.inputs.chat_id }}
+          FILE_NAME: ${{ steps.file.outputs.name }}
+        run: |
+          curl -X POST "https://tapi.bale.ai/bot${BALE_TOKEN}/sendDocument" \
+            -F chat_id="${CHAT_ID}" \
+            -F document=@downloads/"${FILE_NAME}"
