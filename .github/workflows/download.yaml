@@ -21,18 +21,37 @@ jobs:
           cd downloads
           curl -L -O "${{ github.event.inputs.file_url }}"
 
-      - name: Find filename
-        id: file
+      - name: Check file size and prepare for upload
+        id: prepare
         run: |
-          FILE=$(ls downloads | head -n 1)
-          echo "name=$FILE" >> $GITHUB_OUTPUT
+          cd downloads
+          FILE=$(ls | head -n 1)
+          SIZE=$(stat -c%s "$FILE")
+          echo "file=$FILE" >> $GITHUB_OUTPUT
+          echo "size=$SIZE" >> $GITHUB_OUTPUT
+          if [ $SIZE -gt 50000000 ]; then
+            echo "split=true" >> $GITHUB_OUTPUT
+            zip -r archive.zip "$FILE"
+            zip -s 49m archive.zip
+          else
+            echo "split=false" >> $GITHUB_OUTPUT
+          fi
 
       - name: Upload to Bale
         env:
           BALE_TOKEN: ${{ secrets.BALE_BOT_TOKEN }}
           CHAT_ID: ${{ github.event.inputs.chat_id }}
-          FILE_NAME: ${{ steps.file.outputs.name }}
         run: |
-          curl -X POST "https://tapi.bale.ai/bot${BALE_TOKEN}/sendDocument" \
-            -F chat_id="${CHAT_ID}" \
-            -F document=@downloads/"${FILE_NAME}"
+          cd downloads
+          if [ "${{ steps.prepare.outputs.split }}" = "true" ]; then
+            for part in archive.z*; do
+              curl -X POST "https://tapi.bale.ai/bot${BALE_TOKEN}/sendDocument" \
+                -F chat_id="${CHAT_ID}" \
+                -F document=@"$part"
+            done
+          else
+            FILE="${{ steps.prepare.outputs.file }}"
+            curl -X POST "https://tapi.bale.ai/bot${BALE_TOKEN}/sendDocument" \
+              -F chat_id="${CHAT_ID}" \
+              -F document=@"$FILE"
+          fi
