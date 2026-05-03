@@ -1,23 +1,51 @@
-name: Bale Downloader
+name: Download and Store File
 
 on:
   workflow_dispatch:
     inputs:
       file_url:
+        description: "Public URL of the file to download"
         required: true
         type: string
+      upload_target:
+        description: "Where to store the downloaded file"
+        required: false
+        type: choice
+        options:
+          - artifact
+          - repo
+          - bale
+        default: artifact
+      artifact_name:
+        description: "Artifact name when uploading as an artifact"
+        required: false
+        type: string
+        default: downloaded-file
+      repo_path:
+        description: "Repository subpath to save file(s) when using repo upload"
+        required: false
+        type: string
+        default: downloads
       chat_id:
-        required: true
+        description: "Bale chat ID (only required for bale upload)"
+        required: false
         type: string
 
 jobs:
   download-and-upload:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
       - name: Download file
         run: |
-          mkdir downloads
+          mkdir -p downloads
           cd downloads
           curl -L -O "${{ github.event.inputs.file_url }}"
 
@@ -29,14 +57,37 @@ jobs:
           SIZE=$(stat -c%s "$FILE")
           echo "file=$FILE" >> $GITHUB_OUTPUT
           echo "size=$SIZE" >> $GITHUB_OUTPUT
-          if [ $SIZE -gt 20000000 ]; then
+          if [ $SIZE -gt 52428800 ]; then
             echo "split=true" >> $GITHUB_OUTPUT
-            zip -r -s 19m archive.zip "$FILE"
+            zip -r -s 50m archive.zip "$FILE"
           else
             echo "split=false" >> $GITHUB_OUTPUT
           fi
 
+      - name: Upload artifact
+        if: ${{ github.event.inputs.upload_target == 'artifact' }}
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ github.event.inputs.artifact_name }}
+          path: downloads/*
+
+      - name: Commit downloaded files to repo
+        if: ${{ github.event.inputs.upload_target == 'repo' }}
+        run: |
+          mkdir -p "${{ github.event.inputs.repo_path }}"
+          cp -r downloads/* "${{ github.event.inputs.repo_path }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "${{ github.event.inputs.repo_path }}"
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Add downloaded workflow file(s)"
+            git push
+          fi
+
       - name: Upload to Bale
+        if: ${{ github.event.inputs.upload_target == 'bale' }}
         env:
           BALE_TOKEN: ${{ secrets.BALE_BOT_TOKEN }}
           CHAT_ID: ${{ github.event.inputs.chat_id }}
