@@ -29,9 +29,9 @@ jobs:
           SIZE=$(stat -c%s "$FILE")
           echo "file=$FILE" >> $GITHUB_OUTPUT
           echo "size=$SIZE" >> $GITHUB_OUTPUT
-          if [ $SIZE -gt 50000000 ]; then
+          if [ $SIZE -gt 20000000 ]; then
             echo "split=true" >> $GITHUB_OUTPUT
-            zip -r -s 49m archive.zip "$FILE"
+            zip -r -s 19m archive.zip "$FILE"
           else
             echo "split=false" >> $GITHUB_OUTPUT
           fi
